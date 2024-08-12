@@ -1,0 +1,38 @@
+{
+  "name": "osm4vr",
+  "version": "0.0.1",
+  "description": "Travel the world in Virtual Reality, using data from [OpenStreetMap](https://openstreetmap.org/) and relying on the [A-Frame framework](https://aframe.io/) to support VR in the browser. The code in the repository can also be integrated into other projects to add a map to VR scenes and/or load buildings from OpenStreetMap.",
+  "main": "index.js",
+  "scripts": {
+    "dist": "npm run dist:min && npm run dist:max",
+    "dist:max": "webpack",
+    "dist:min": "cross-env NODE_ENV=production webpack",
+    "lint": "semistandard -v | snazzy",
+    "lint:fix": "semistandard --fix",
+    "prepublish": "npm run dist",
+    "start": "webpack serve --progress"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "osmtogeojson": "https://github.com/tyrasd/osmtogeojson#snyk-fix-65371a4c4920389f7e5127c141088511"
+  },
+  "devDependencies": {
+    "babel-loader": "^9.1.3",
+    "cross-env": "^7.0.3",
+    "stream-browserify": "^3.0.0",
+    "webpack": "^5.93.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.0.4"
+  },
+  "semistandard": {
+    "globals": [
+      "AFRAME",
+      "THREE"
+    ],
+    "ignore": [
+      "examples/build.js",
+      "dist/**"
+    ]
+  }
+}

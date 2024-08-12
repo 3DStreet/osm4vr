@@ -1,3 +1,5 @@
+import osmtogeojson from 'osmtogeojson';
+
 // Aframe component to load buildings from a geojson file or the Overpass API
 //
 // lat, lon: start position of the map at Aframe's origin (0,0)
