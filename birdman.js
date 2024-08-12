@@ -5,12 +5,12 @@
 
 AFRAME.registerComponent('birdman', {
   schema: {
-    leftWingId: {type: 'string', default: 'leftHand'}, // id of the left hand controller
-    rightWingId: {type: 'string', default: 'rightHand'}, // id of the right hand controller
-    rigId: {type: 'string', default: 'rig'}, // id of the rig
+    leftWingId: { type: 'string', default: 'leftHand' }, // id of the left hand controller
+    rightWingId: { type: 'string', default: 'rightHand' }, // id of the right hand controller
+    rigId: { type: 'string', default: 'rig' } // id of the rig
   },
-  
-  init: function() {
+
+  init: function () {
     this.leftWing = document.getElementById(this.data.leftWingId);
     this.rightWing = document.getElementById(this.data.rightWingId);
 
@@ -25,15 +25,15 @@ AFRAME.registerComponent('birdman', {
   },
 
   tick: function (time, timeDelta) {
-    let leftDir = this.leftWing.components.wing.dir;
-    let rightDir = this.rightWing.components.wing.dir;
+    const leftDir = this.leftWing.components.wing.dir;
+    const rightDir = this.rightWing.components.wing.dir;
 
     // direction to move the rig
-    let dir = new THREE.Vector3(0, 0, 0);
-    let armWidth = this.leftHand.distanceTo(this.rightHand);
+    const dir = new THREE.Vector3(0, 0, 0);
+    const armWidth = this.leftHand.distanceTo(this.rightHand);
 
     // go up when moving down both controllers
-    let bothControllersMovingDown = leftDir.y >= 0 && rightDir.y >= 0;
+    const bothControllersMovingDown = leftDir.y >= 0 && rightDir.y >= 0;
     if (bothControllersMovingDown) {
       // move up when controller is moving down, move faster with wider arm span
       dir.y = (leftDir.y + rightDir.y) * (armWidth + 0.5);
@@ -46,26 +46,26 @@ AFRAME.registerComponent('birdman', {
       const WEIGHT = 60; // kg
       const SURFACE = 4; // total wing surface in square meters
       const UPLIFT = 1.3; // uplift coefficient at sea level (made up)
-      let vspeed = this.vSpeed_mps(WEIGHT, SURFACE, UPLIFT, 0.2);
-      let hspeed = this.hSpeed_mps(WEIGHT, SURFACE, UPLIFT, 1.0);
+      const vspeed = this.vSpeed_mps(WEIGHT, SURFACE, UPLIFT, 0.2);
+      const hspeed = this.hSpeed_mps(WEIGHT, SURFACE, UPLIFT, 1.0);
 
       // glide down
       dir.y -= vspeed * timeDelta / 1000;
 
       // slow down horizontal movement with some resistance
-      let slow_down_factor = 0.98;
+      const slow_down_factor = 0.98;
       if (this.dir.length() * 1000 / timeDelta > hspeed) {
         this.dir.x *= slow_down_factor;
         this.dir.z *= slow_down_factor;
       }
 
       // rotate if hands are at different heights
-      let armHeightDiff = this.leftHand.y - this.rightHand.y;
-      let areHandsDifferentHeight = Math.abs(armHeightDiff) > 0.2;
+      const armHeightDiff = this.leftHand.y - this.rightHand.y;
+      const areHandsDifferentHeight = Math.abs(armHeightDiff) > 0.2;
       if (areHandsDifferentHeight) {
-        let angle = Math.tan(armHeightDiff / armWidth);
+        const angle = Math.tan(armHeightDiff / armWidth);
         this.rigRot.y -= angle / 100;
-      }      
+      }
     } else {
       // stop gliding when we're on the ground
       this.dir.set(0, 0, 0);
@@ -78,24 +78,24 @@ AFRAME.registerComponent('birdman', {
     this.rigPos.add(this.dir);
 
     // add part of the controller direction to the gliding direction
-    let factor = 0.3;
+    const factor = 0.3;
     this.dir.x += dir.x * factor;
     this.dir.z += dir.z * factor;
   },
 
   // calculate vertical speed in meters per second
-  vSpeed_mps: function(weight, surface, uplift, drag, density = 1.225) {
+  vSpeed_mps: function (weight, surface, uplift, drag, density = 1.225) {
     const g = 9.81; // gravity in meters per second squared
     // calculate vertical speed in meters per second
-    let wingLoading = weight / surface;
-    return drag * Math.sqrt(2 * g * wingLoading / (density * uplift**3));
+    const wingLoading = weight / surface;
+    return drag * Math.sqrt(2 * g * wingLoading / (density * uplift ** 3));
   },
-  
+
   // calculate horizontal speed in meters per second
-  hSpeed_mps: function(weight, surface, uplift, drag, density = 1.225) {
+  hSpeed_mps: function (weight, surface, uplift, drag, density = 1.225) {
     const g = 9.81; // gravity in meters per second squared
     // calculate horizontal speed in meters per second
-    let wingLoading = weight / surface;
+    const wingLoading = weight / surface;
     return drag * Math.sqrt(2 * g * wingLoading / (density * uplift));
   }
-})
+});
