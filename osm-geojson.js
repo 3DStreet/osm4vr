@@ -232,6 +232,8 @@ AFRAME.registerComponent('osm-geojson', {
     const mesh = new THREE.Mesh(geometry, material);
     const entity = document.createElement('a-entity');
     entity.setObject3D('mesh', mesh);
+    entity.setAttribute('data-ignore-raycaster', '');
+    entity.classList.add('autocreated');
     return entity;
   },
 
