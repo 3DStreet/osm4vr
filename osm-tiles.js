@@ -110,6 +110,8 @@ AFRAME.registerComponent('osm-tiles', {
     tile.setAttribute('width', this.tileSize_m);
     tile.setAttribute('height', this.tileSize_m);
     tile.setAttribute('position', {x: x_m, y: y_m, z: 0});
+    tile.setAttribute('data-ignore-raycaster', '');
+    tile.classList.add('autocreated');
     return tile;
   },
 
