@@ -136,6 +136,47 @@ AFRAME.registerComponent('osm-geojson', {
     return [x, y];
   },
 
+  // Debug function to log feature properties and geometry
+  // This is useful to debug specific features like buildings and building parts
+  // The output can be added to a reference geojson file
+  // To simplify the output, we log geopositions with reduced precision and each path as one line
+  logFeature: function(feature) {
+    let s = '{"type": "Feature", "properties": {' + "\n";
+    s += Object.entries(feature.properties).map(([key, value]) => {if (!key.startsWith('tmp_')) return `  "${key}": "${value}"`;}).join(",\n") + "\n";
+    s += `}, "geometry": {"type": "${feature.geometry.type}", "coordinates": [\n`;
+    let outlines = [];
+    for (let path of feature.geometry.coordinates) {
+      outlines.push("  [" + path.map(([lon, lat]) => `[${lon.toFixed(5)},${lat.toFixed(5)}]`).join(',') + "]");
+    }
+    s += outlines.join(",\n") + `\n]},\n "id": "${feature.id}"\n},`;
+    console.log(s);
+  },
+
+  // Log matching features and their related building parts
+  // names is an optional array of feature names to log
+  logFeatures: function(features, names) {
+    let buildings = [];
+    let parts = [];
+    for (let i = 0; i < features.length; i++) {
+      let properties = features[i].properties;
+      if ('building' in properties && (!names || names.includes(properties.name))) {
+        buildings.push(i);
+      } else if ('building:part' in properties){
+        parts.push(i);
+      }
+    }
+    for (let i of buildings) {
+      let building = features[i];
+      this.logFeature(building);
+      for (let j of parts) {
+        let part = features[j];
+        if ('tmp_bbox' in part.properties && building.properties.tmp_bbox.containsBox(part.properties.tmp_bbox)) {
+          this.logFeature(part);
+        }
+      }
+    }
+  },
+
   // Compute center of the given geojson features
   // we ignore point features and just take the first coordinate pair of each path
   // TODO: just use the bounding box center
@@ -189,28 +230,33 @@ AFRAME.registerComponent('osm-geojson', {
   // Convert geocoordinates into meter-based positions around the given base
   // coordinates order in geojson is longitude, latitude!
   // coords is a path of [lon, lat] positions, e.g. [[13.41224,52.51712],[13.41150,52.51702],...]
-  geojsonCoords2plane: function (coords, baseLat, baseLon) {
-    const circumference_m = this.EQUATOR_M * Math.cos(baseLat * Math.PI / 180);
-    return coords.map(([lon, lat]) => [
+  // result is a Vector2 array of positions in meters on the plane
+  geojsonCoords2plane: function(coords, baseLat, baseLon) {
+    if (coords.length == 1 && coords[0].length > 2) {
+      console.log(coords);
+      coords = coords[0];
+    }
+    let circumference_m = this.EQUATOR_M * Math.cos(baseLat * Math.PI / 180);
+    return coords.map(([lon, lat]) => new THREE.Vector2(
       (lon - baseLon) / 360 * circumference_m,
       (lat - baseLat) / 360 * this.POLES_M
-    ]);
+    ));
   },
 
   // Create the Aframe geometry by extruding building footprints to given height
-  // xyCoords is an array of [x,y] positions in meters, e.g. [[0, 0], [1, 0], [1, 1], [0, 1]]
-  // xyHoles is an optional array of paths to describe holes in the building footprint
+  // xyCoords is a Vector2 array of x,y positions in meters
+  // xyHoles is an optional array of Vector2 paths to describe holes in the building footprint
   // height is the building height in meters from the base to the top, null to use a default
   // if minHeight is given, the geometry is moved up to reach from minHeight to the top
-  createGeometry: function (xyCoords, xyHoles, height, minHeight) {
-    const shape = new THREE.Shape(xyCoords.map(xy => new THREE.Vector2(xy[0], xy[1])));
+  createGeometry: function(xyCoords, xyHoles, height, minHeight) {
+    let shape = new THREE.Shape(xyCoords);
     if (height === null) {
       // set the height based on the perimeter of the building if missing other info
       const perimeter_m = shape.getLength();
       height = Math.min(this.DEFAULT_BUILDING_HEIGHT_M, perimeter_m / 5);
     }
-    for (const hole of xyHoles) {
-      shape.holes.push(new THREE.Path(hole.map(xy => new THREE.Vector2(xy[0], xy[1]))));
+    for (let hole of xyHoles) {
+      shape.holes.push(new THREE.Path(hole));
     }
     height -= minHeight;
     const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
@@ -237,6 +283,25 @@ AFRAME.registerComponent('osm-geojson', {
     return entity;
   },
 
+  // Generate a dome / half sphere shaped building part from outline and height, both in meters
+  // if minHeight is given, the shape is extruded from that height upwards
+  // TODO: support elliptical domes (currently only circular)
+  createDome: function(xyCoords, height, minHeight = 0) {
+    let bbox = new THREE.Box2().setFromPoints(xyCoords);
+    let radius_m = (bbox.max.x - bbox.min.x) / 2;
+    let center = new THREE.Vector2;
+    bbox.getCenter(center);
+    // use magic numbers to set default values, the Pi related values define a half sphere
+    let geometry = new THREE.SphereGeometry(1, 32, 16, 0, 2 * Math.PI, 0, 0.5 * Math.PI);
+    geometry.scale(radius_m, height - minHeight, radius_m);
+    geometry.translate(center.x, minHeight, -center.y);
+    let material = new THREE.MeshBasicMaterial({color: 0xaabbcc});
+    let mesh = new THREE.Mesh(geometry, material);
+    let entity = document.createElement('a-entity');
+    entity.setObject3D('mesh', mesh);
+    return entity;
+  },
+
   // Convert a height string to meters, handling different units/formats
   height2meters: function (height) {
     if (height.indexOf("'") > 0) {
@@ -257,7 +322,11 @@ AFRAME.registerComponent('osm-geojson', {
       return this.height2meters(properties.height);
     }
     if ('building:levels' in properties) {
-      return parseInt(properties['building:levels']) * this.LEVEL_HEIGHT_M;
+      return parseInt(properties["building:levels"]) * this.LEVEL_HEIGHT_M;
+    }
+    if ('roof:height' in properties) {
+      // some building parts have (only) a roof height, e.g. https://www.openstreetmap.org/way/618992347
+      return this.height2meters(properties['roof:height']);
     }
     if (properties.building in this.BUILDING_TO_METER) {
       return this.BUILDING_TO_METER[properties.building];
@@ -304,8 +373,13 @@ AFRAME.registerComponent('osm-geojson', {
     if (height_m === 0) {
       return null; // skip building outlines that are covered by building parts
     }
-    const minHeight_m = this.feature2minHeight(feature);
-    const building = this.createBuilding(xyOutline, xyHoles, height_m, minHeight_m);
+    let minHeight_m = this.feature2minHeight(feature);
+    let building = this.createBuilding(xyOutline, xyHoles, height_m, minHeight_m);
+    // special handling for dome shaped building parts
+    if (('roof:shape' in feature.properties || 'building:shape' in feature.properties)
+      && (feature.properties['roof:shape'] == 'dome' || feature.properties['building:shape'] == 'dome')) {
+      building = this.createDome(xyOutline, height_m, minHeight_m);
+    }
 
     const color = this.feature2color(feature);
     const material = `color: ${color}; opacity: 1.0;`;
@@ -323,64 +397,170 @@ AFRAME.registerComponent('osm-geojson', {
     return [south, west, north, east];
   },
 
-  // Iterate over features in geojson and add buildings to the scene
-  addBuildings: function (geojson) {
-    let count = 0;
-    let ignored = 0;
-    let skipped = 0;
-    const buildings = new Set();
-    const parts = [];
-
-    // iterate over all features and add buildings to the scene
-    for (const feature of geojson.features) {
-      const properties = feature.properties;
-      if (('building' in properties || 'building:part' in properties) && !this.featuresLoaded[feature.id]) {
-        this.featuresLoaded[feature.id] = true;
-        const building = this.feature2building(feature, this.data.lat, this.data.lon);
-        if (building) {
-          this.el.appendChild(building);
-          count += 1;
-          if ('building' in properties) {
-            buildings.add(building);
-          } else {
-            parts.push(building);
+  // Given a building part, find the building it belongs to
+  findBaseBuilding: function(part, buildingIds, id2feature) {
+    let result = 0;
+    for (let buildingId of buildingIds) {
+      let building = id2feature[buildingId];
+      if (building.properties.tmp_bbox.containsBox(part.properties.tmp_bbox)) {
+        if (result) {
+          // console.log('MULTIPLE BASE BUILDINGS: ', building);
+          // if the part is contained in multiple building footprints, use the smaller one
+          if (id2feature[result].properties.tmp_bbox.containsBox(id2feature[buildingId].properties.tmp_bbox)) {
+            result = buildingId;
           }
         } else {
-          skipped += 1;
+          result = buildingId;
+        }
+      }
+    }
+    return result;
+  },
+
+  // Check if a building part feature is a roof part
+  isRoof: function(part) {
+    return 'building:part' in part.properties && part.properties['building:part'] == 'roof';
+  },
+
+  // Iterate over all features, match buildings with their parts and decide which ones to keep
+  // Most buildings don't have separate building parts, but some have multiple parts
+  // Some buildings are completely replaced by their parts, others use parts as an extension, e.g. for the roof
+  // See https://wiki.openstreetmap.org/wiki/Key:building:part
+  // Unfortunately, there's no enforced relation:
+  // https://help.openstreetmap.org/questions/60330/how-do-you-create-a-relation-between-a-building-and-3d-building-parts
+  filterBuildingParts: function(features, featuresLoaded, lat, lon) {
+    let id2feature = {};  // map feature id to feature
+    let buildingIds = new Set();  // feature ids of buildings
+    let partIds = new Set();  // feature ids of building parts
+    let ignored = 0;  // count features that are not buildings or parts
+
+    // Iterate over all features, create their 2d outlines and 
+    for (let feature of features) {
+      let properties = feature.properties;
+      let geometry = feature.geometry;
+      // let isArea = geometry.type == 'Polygon' || geometry.type == 'MultiPolygon';
+      let isArea = geometry.type != 'LineString' && geometry.type != 'Point';
+      // TODO: check if special handling is needed when building parts are in different tiles
+      if (!featuresLoaded[feature.id] && isArea && ('building' in properties || 'building:part' in properties)) {
+        featuresLoaded[feature.id] = true;
+        let paths = feature.geometry.coordinates;
+        if (paths[0].length < 5) {
+          // console.log(feature);
+        }
+        let outline = this.geojsonCoords2plane(paths[0], lat, lon);
+        properties.tmp_outline = outline;
+        properties.tmp_bbox = new THREE.Box2().setFromPoints(outline);
+        id2feature[feature.id] = feature;
+        if ('building' in properties) {
+          buildingIds.add(feature.id);
+        } else {
+          partIds.add(feature.id);
         }
       } else {
-        if (!this.featuresLoaded[feature.id] && feature.geometry.type != 'Point') {
-          // console.log(feature);
+        if (!this.featuresLoaded[feature.id] && geometry.type != 'Point') {
+          console.log(feature);
         }
         ignored += 1;
       }
     }
 
-    // remove buildings that are covered by building parts
-    // Unfortunately, there's no enforced relation:
-    // https://help.openstreetmap.org/questions/60330/how-do-you-create-a-relation-between-a-building-and-3d-building-parts
-    // TODO: optimise logic and performance if needed
-    const outer = new THREE.Box3();
-    const inner = new THREE.Box3();
-    for (const part of parts) {
-      const uselessBuildings = new Set();
-      inner.setFromObject(part.object3D);
-      for (const building of buildings) {
-        if (part.object3D.position.distanceTo(building.object3D.position) < 1) {
-          outer.setFromObject(building.object3D);
-          if (outer.containsBox(inner)) {
-            uselessBuildings.add(building);
-          }
+    // Identify buildings that are covered by building parts
+    // Generally, parts are contained in the building's footprint
+    // If parts are outside, a relation should be used
+    // If a part is on top of a building, both are kept
+    console.log('Checking building parts');
+    let baseBuildingIds = new Set();  // feature ids of buildings that have building parts
+    let skippedBuildingIds = new Set();  // feature ids of buildings that are fully replaced by parts
+    let baseBuildings2parts = {};  // map building id to part ids
+    for (let partId of partIds) {
+      let part = id2feature[partId];
+      if (this.isRoof(part)) {
+        // ignore roof parts, they are not used to replace the building
+        continue;
+      }
+      let buildingId = this.findBaseBuilding(part, buildingIds, id2feature, baseBuildingIds);
+      if (buildingId) {
+        baseBuildingIds.add(buildingId);
+        baseBuildings2parts[buildingId] = baseBuildings2parts[buildingId] || new Set();
+        baseBuildings2parts[buildingId].add(partId);
+      }
+    }
+
+    // Check the buildings with parts and skip those that are fully replaced
+    for (let buildingId of baseBuildingIds) {
+      if (baseBuildings2parts[buildingId].size == 1) {
+        // a building shouldn't be replaced by a single part, e.g. a roof, keep both
+        continue;
+      }
+      let building = id2feature[buildingId];
+      for (let partId of baseBuildings2parts[buildingId]) {
+        let part = id2feature[partId];
+        if ('min_height' in part.properties && 'height' in building.properties
+          && part.properties.min_height >= building.properties.height) {
+          // building part is on top of building, keep both; e.g. https://www.openstreetmap.org/way/304339260
+          // console.log('Ignoring building part on top of building', part.properties, building.properties);
+        } else {
+          skippedBuildingIds.add(buildingId);
+          // break;
         }
       }
-      for (const building of uselessBuildings) {
-        this.el.removeChild(building);
-        buildings.delete(building);
-        count -= 1;
+    }
+    // this.logFeatures(features, ['Brandenburger Tor', 'Botschaft der Vereinigten Staaten von Amerika', 'Allianz Forum', 'Berliner Schloss', 'Berliner Fernsehturm']);
+    
+    // return featureIds without the skippedBuildingIds
+    // TODO: use the new Set operations once they are widely supported (just getting started in 2024)
+    // return new Set([...buildingIds].filter(x => !skippedBuildingIds.has(x)));
+    let result = new Set();
+    for (let fid of Object.keys(id2feature)) {
+      if (!skippedBuildingIds.has(fid)) {
+        result.add(fid);
+      }
+    }
+    return result;
+  },
+
+  // Iterate over features in geojson and add buildings to the scene
+  addBuildings: function(geojson) {
+    let count = 0;
+    let ignored = 0;
+    let skipped = 0;
+
+    let start = performance.now();
+    let featureIds = this.filterBuildingParts(geojson.features, this.featuresLoaded, this.data.lat, this.data.lon);
+    let end = performance.now();
+    console.log("Processed", geojson.features.length, "features in", end - start, "ms");
+    start = end;
+
+    // <a-entity geometry-merger="preserveOriginal: false" material="color: #AAA">
+    // let parent = document.createElement('a-entity');
+    // parent.setAttribute('geometry-merger', 'preserveOriginal: false');
+    // parent.setAttribute('material', 'color: #AAA');
+    let parent = this.el;
+
+    for (let feature of geojson.features) {
+      if (!featureIds.has(feature.id)) {
+        ignored += 1;
+        continue;
+      }
+      let building = this.feature2building(feature, this.data.lat, this.data.lon);
+      if (building) {
+        // show skipped buildings transparent
+        // if ('building' in feature.properties) {
+        //   let material = building.getAttribute('material');
+        //   building.setAttribute('material', material + ' transparent: true; opacity: 0.5;');
+        // }
+        parent.appendChild(building);
+        count += 1;
+      } else {
         skipped += 1;
       }
     }
-    console.log('Loaded', count, 'buildings, ignored', ignored, ', skipped', skipped);
+
+    // this.el.appendChild(parent);
+    end = performance.now();
+    console.log("Added", count, "buildings in", end - start, "ms");
+
+    console.log("Loaded", count, "buildings, ignored", ignored, ", skipped", skipped);
   },
 
   // Check if all tiles within the default radius around the given position are fully loaded
