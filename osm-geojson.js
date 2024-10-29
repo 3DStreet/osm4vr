@@ -583,8 +583,10 @@ AFRAME.registerComponent('osm-geojson', {
         ignored += 1;
         continue;
       }
-      let building = this.feature2building(feature, this.data.lat, this.data.lon);
-      if (building) {
+      // let building = this.feature2building(feature, this.data.lat, this.data.lon);
+      let geometry = this.feature2geometry(feature, this.data.lat, this.data.lon);
+
+      if (geometry) {
         // show skipped buildings transparent
         // if ('building' in feature.properties) {
         //   let material = building.getAttribute('material');
@@ -592,7 +594,6 @@ AFRAME.registerComponent('osm-geojson', {
         // }
 
         // parent.appendChild(building);
-        let geometry = this.feature2geometry(feature, this.data.lat, this.data.lon);
         // setting colours per vertex as in https://discourse.threejs.org/t/52799/2
         // TODO: see if this can be simplified, e.g. with groups
         geometry = geometry.toNonIndexed();
@@ -614,7 +615,7 @@ AFRAME.registerComponent('osm-geojson', {
     }
 
     // merge all geometries and add them as one entity to the scene
-    let geometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries, false);
+    let geometry = THREE.BufferGeometryUtils.mergeGeometries(geometries, false);
     let material = new THREE.MeshStandardMaterial({vertexColors: true}); //THREE.FaceColors});
     let mesh = new THREE.Mesh(geometry, material);
     let entity = document.createElement('a-entity');
