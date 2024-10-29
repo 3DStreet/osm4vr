@@ -618,9 +618,11 @@ AFRAME.registerComponent('osm-geojson', {
     let geometry = THREE.BufferGeometryUtils.mergeGeometries(geometries, false);
     let material = new THREE.MeshStandardMaterial({vertexColors: true}); //THREE.FaceColors});
     let mesh = new THREE.Mesh(geometry, material);
-    let entity = document.createElement('a-entity');
+    //    let entity = document.createElement('a-entity');
+    //    entity.setObject3D('mesh', mesh);
+    let entity = this.el; // use component's entity
     entity.setObject3D('mesh', mesh);
-    parent.appendChild(entity);
+    // parent.appendChild(entity);
 
 
     // this.el.appendChild(parent);
