@@ -149,7 +149,7 @@ AFRAME.registerComponent('osm-geojson', {
       outlines.push("  [" + path.map(([lon, lat]) => `[${lon.toFixed(5)},${lat.toFixed(5)}]`).join(',') + "]");
     }
     s += outlines.join(",\n") + `\n]},\n "id": "${feature.id}"\n},`;
-    console.log(s);
+    // console.log(s);
   },
 
   // Log matching features and their related building parts
@@ -195,7 +195,7 @@ AFRAME.registerComponent('osm-geojson', {
     }
     lat /= count;
     lon /= count;
-    console.log('Geojson center (lat, lon): ', lat, lon);
+    // console.log('Geojson center (lat, lon): ', lat, lon);
     return [lat, lon];
   },
 
@@ -222,7 +222,7 @@ AFRAME.registerComponent('osm-geojson', {
     );
     if (response.ok) {
       const data = await response.json();
-      console.log(data);
+      // console.log(data);
       return data;
     }
   },
@@ -233,7 +233,7 @@ AFRAME.registerComponent('osm-geojson', {
   // result is a Vector2 array of positions in meters on the plane
   geojsonCoords2plane: function(coords, baseLat, baseLon) {
     if (coords.length == 1 && coords[0].length > 2) {
-      console.log(coords);
+      // console.log(coords);
       coords = coords[0];
     }
     let circumference_m = this.EQUATOR_M * Math.cos(baseLat * Math.PI / 180);
@@ -498,7 +498,7 @@ AFRAME.registerComponent('osm-geojson', {
         }
       } else {
         if (!this.featuresLoaded[feature.id] && geometry.type != 'Point') {
-          console.log(feature);
+          // console.log(feature);
         }
         ignored += 1;
       }
@@ -508,7 +508,7 @@ AFRAME.registerComponent('osm-geojson', {
     // Generally, parts are contained in the building's footprint
     // If parts are outside, a relation should be used
     // If a part is on top of a building, both are kept
-    console.log('Checking building parts');
+    // console.log('Checking building parts');
     let baseBuildingIds = new Set();  // feature ids of buildings that have building parts
     let skippedBuildingIds = new Set();  // feature ids of buildings that are fully replaced by parts
     let baseBuildings2parts = {};  // map building id to part ids
@@ -568,7 +568,7 @@ AFRAME.registerComponent('osm-geojson', {
     let start = performance.now();
     let featureIds = this.filterBuildingParts(geojson.features, this.featuresLoaded, this.data.lat, this.data.lon);
     let end = performance.now();
-    console.log("Processed", geojson.features.length, "features in", end - start, "ms");
+    // console.log("Processed", geojson.features.length, "features in", end - start, "ms");
     start = end;
 
     // <a-entity geometry-merger="preserveOriginal: false" material="color: #AAA">
@@ -627,9 +627,9 @@ AFRAME.registerComponent('osm-geojson', {
 
     // this.el.appendChild(parent);
     end = performance.now();
-    console.log("Added", count, "buildings in", end - start, "ms");
+    // console.log("Added", count, "buildings in", end - start, "ms");
 
-    console.log("Loaded", count, "buildings, ignored", ignored, ", skipped", skipped);
+    // console.log("Loaded", count, "buildings, ignored", ignored, ", skipped", skipped);
   },
 
   // Check if all tiles within the default radius around the given position are fully loaded
@@ -673,7 +673,7 @@ AFRAME.registerComponent('osm-geojson', {
     }
 
     if (bboxSWNE.length > 0) {
-      console.log('Bounding box for missing tiles (SWNE): ', bboxSWNE);
+      // console.log('Bounding box for missing tiles (SWNE): ', bboxSWNE);
       this.loadOSMbuildingsBbox(bboxSWNE).then((json) => {
         const geojson = osmtogeojson(json);
         this.addBuildings(geojson);
